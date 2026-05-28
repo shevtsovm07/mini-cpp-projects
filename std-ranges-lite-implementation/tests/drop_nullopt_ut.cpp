@@ -1,0 +1,21 @@
+#include "AsDataFlow.h"
+#include "DropNullopt.h"
+#include "AsVector.h"
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+#include <optional>
+#include <vector>
+
+TEST(DropNulloptTest, DropNullopt) {
+    std::vector<std::optional<int>> input = {1, std::nullopt, 3, std::nullopt, 5};
+    auto result = AsDataFlow(input) | DropNullopt() | AsVector();
+    ASSERT_THAT(result, testing::ElementsAre(1, 3, 5));
+}
+
+TEST(DropNullopt, NulloptsOnly) {
+    std::vector<std::optional<int>> input = {std::nullopt, std::nullopt};
+    auto result = AsDataFlow(input) | DropNullopt() | AsVector();
+    ASSERT_TRUE(result.empty());
+}
