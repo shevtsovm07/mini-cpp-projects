@@ -1,89 +1,86 @@
-# Лабораторная работа 6
+# circular_buffer
 
-Circular Buffer. STL - совместивый контейнер.
+A fixed-capacity circular buffer implemented as a fully compliant STL container. Satisfies `Container`, `ReversibleContainer`, `SequenceContainer`, and `AllocatorAwareContainer` named requirements — verified at compile time via C++20 concepts.
 
-## Задача
+```cpp
+circular_buffer<int> cb(5);
 
-Реализовать STL-совместимый контейнер для [Циклического буфера](https://en.wikipedia.org/wiki/Circular_buffer). Для 1 и 2 потока с возможностью расширения.
+for (int i = 0; i < 20; ++i)
+    cb.push_back(i);
 
-## Требования
-
-Контейнер должен представлять из себя шаблон класса, праметризируемый типом хранимых объектов и аллокатором, максимальное количество хранимых элементов передается в конструкторе. Также частично(см ниже) удовлетворять следующим требованиям к stl-совместимым контейнерам:
-
-  - [контейнер](https://en.cppreference.com/w/cpp/named_req/Container)
-  - [последовательный контейнер](https://en.cppreference.com/w/cpp/named_req/SequenceContainer) (за исключением следующих методов):
-     - ~~emplace~~
-     - ~~assign_range~~
-     - ~~emplace_front~~
-     - ~~emplace_back~~
-     - ~~prepend_range~~
-  - [контейнер с обратным итератором](https://en.cppreference.com/w/cpp/named_req/ReversibleContainer)
-  - [контейнер поддерживающий аллокатор](https://en.cppreference.com/w/cpp/named_req/AllocatorAwareContainer)
-  - [oбладать итератором произвольного доступа](https://en.cppreference.com/w/cpp/named_req/RandomAccessIterator)
-
-
-Помимое этого обладать следующими методами:
-
-| Метод     |  Алгоримическая сложность        |
-| --------  | -------                          |
-| clear     |  O(N)                            |
-| push_back |  O(1)                            |
-| pop_back  |  O(1)                            |
-| push_front |  O(1)                            |
-| pop_front  |  O(1)                            |
-| insert     |  O(N)                            |
-| erase      |  O(N)                            |
-
-
-## Тесты
-
-Все указанные выше требования должны быть покрыты тестами, с помощью фреймворка [Google Test](http://google.github.io/googletest).
-
-В этой лабораторной покрытие тестами является частью задания и измеряется при помощи CI/CD. Работы с покрытием ниже 50% считаются невыполненными.
-
-Подробный лог покрытия можно увидеть в `Quality -> Coverage -> Show coverage log`.
-
-Часть тестов предоставляется заранее.
-
-### Локальная проверка покрытия
-
-Проверить покрытие тестами также можно локально. Для этого необходимо установить утилиту `gcovr`, собрать проект с включенной проверкой покрытия, и запустить таргет `coverage`.
-
-```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Debug -DWITH_COVERAGE=ON
-cmake --build build
-cmake --build build --target coverage
+// buffer holds the last 5 elements: 15 16 17 18 19
+for (auto x : cb)
+    std::cout << x << " ";
 ```
 
-После выполнения, подробный отчёт будет доступен в `build/coverage.html`.
+When the buffer is full, `push_back` and `push_front` overwrite the oldest element rather than throwing. Size stays fixed at capacity; no reallocation ever occurs.
 
-## Кольцевой буфер с расширением максимального размера (только для 1 и 2 потока)
+## Interface
 
-В учебных целях, контейнер должен обладать функциональностью для расширения своего максимального размера.
-Должно быть реализовано следующее поведение: в случае достижения максимального размера кольцевого буфера, значение максимального размера должно удваиваться (по аналогии с вектором).
+```cpp
+template<typename T, bool Extendable = false, typename Allocator = std::allocator<T>>
+class circular_buffer;
+```
 
-Для запуска тестов расширяемого буфера в [CMakeLists](tests/CMakeLists.txt) укажите для опции `RUN_EXT_TESTS` значение `ON`
+| Method | Description |
+|---|---|
+| `push_back(value)` / `push_front(value)` | Add element; overwrites oldest if full |
+| `pop_back()` / `pop_front()` | Remove element; throws `std::out_of_range` if empty |
+| `front()` / `back()` | Access first/last element |
+| `at(index)` | Bounds-checked random access |
+| `operator[](index)` | Unchecked random access |
+| `insert(pos, ...)` | Insert one value, N copies, iterator range, or `initializer_list` |
+| `erase(pos)` / `erase(pos1, pos2)` | Remove element or range |
+| `assign(...)` | Replace contents from count+value, iterator range, or `initializer_list` |
+| `resize(n)` | Shrink or grow to n elements (n ≤ capacity) |
+| `clear()` | Destroy all elements, keep capacity |
+| `swap(other)` | O(1) swap |
+| `size()` / `empty()` / `max_size()` | Size queries |
+| `get_allocator()` | Returns the allocator |
 
-## Ограничения
+## Iterators
 
-- Запрещено использовать стандартные контейнеры и адаптеры
+The buffer provides a single `base_iterator<IsConst, IsReverse>` template that covers all four iterator categories:
 
-## ТеорМин
+| Type | Alias |
+|---|---|
+| `base_iterator<false, false>` | `iterator` |
+| `base_iterator<true, false>` | `const_iterator` |
+| `base_iterator<false, true>` | `reverse_iterator` |
+| `base_iterator<true, true>` | `const_reverse_iterator` |
 
-* контейнеры
-* алгоритмы
-* аллокаторы
-* адаптеры
+All four satisfy `LegacyRandomAccessIterator`. Arithmetic (`+`, `-`, `+=`, `-=`), comparison (`<`, `>`, `<=`, `>=`, `==`, `!=`), and `operator[]` are fully implemented. Converting from `iterator` to `const_iterator` is allowed; the reverse is rejected at compile time via `static_assert`.
 
+Iterator arithmetic accounts for the circular layout: `operator*` dereferences at `data_[(head_ + pos) % capacity]`, so logical indices map correctly regardless of where `head_` sits in the underlying array.
 
-## Deadline
+## Named requirements compliance
 
-| deadline | date | coeff | branch |
-|----------|-----------------|-------|------------|
-| 0 | 09.03.26 23:59 | 1.0 | deadline_0 |
-| 1 | 16.03.26 23:59 | 0.8 | deadline_1 |
-| 2 | 23.03.26 23:59 | 0.65 | deadline_2 |
-| 3 | 30.03.26 00:00 | 0.5 | deadline_3 |
+Verified at compile time in `named_requirements_ut.cpp` using C++20 concept definitions:
 
+```cpp
+static_assert(Container<circular_buffer<int>>);
+static_assert(AllocatorAwareContainer<circular_buffer<int>>);
+static_assert(SequenceContainer<circular_buffer<int>>);
+static_assert(ReversibleContainer<circular_buffer<int>>);
+```
 
-Максимальное количество баллов - 12
+## Implementation notes
+
+- **Storage**: raw memory allocated via `std::allocator_traits`; objects are constructed and destroyed in place with `construct`/`destroy`, never default-initialized
+- **Layout**: a single flat array with `head_` index; logical index `i` maps to physical index `(head_ + i) % capacity_`
+- **Copy/move**: copy constructor linearises the buffer (resets `head_` to 0); move constructor transfers ownership in O(1); move with a different allocator falls back to element-wise move
+- **Copy-and-swap**: copy assignment uses copy-and-swap idiom for strong exception safety
+
+## Build
+
+```sh
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --verbose
+```
+
+Requires: C++23, CMake ≥ 3.14, Google Test + GMock
+
+## Tech
+
+C++23 · STL named requirements · `std::allocator_traits` · random access iterators · concepts · copy-and-swap · Google Test
